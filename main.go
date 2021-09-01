@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"flag"
 	"fmt"
 	"log"
@@ -9,20 +10,33 @@ import (
 	linturl "github.com/JitenPalaparthi/urllinter/pkg/lint"
 )
 
+var (
+	//go:embed config/urllintconfig.yaml
+	data string
+)
+
 func main() {
 	// get the current working directory
 	wd, err := os.Getwd()
 	if err != nil {
 		log.Fatal(err)
 	}
-	var pathFlag = flag.String("path", wd, "path to be provided")                                                       // default is current working directory
-	var configPathFlag = flag.String("config", ".urllintconfig.yaml", "path for the configuration file to be provided") // default config is the config.json file that is there in the urllint path
+	var pathFlag = flag.String("path", wd, "path to be provided")                                    // default is current working directory
+	var configPathFlag = flag.String("config", "", "path for the configuration file to be provided") // default config is the config.json file that is there in the urllint path
 	var showSumary = flag.Bool("summary", false, "to get summary pass summary=true;to off either dont pass or summary=false")
 	var detailedSummary = flag.String("details", "Fail", "detailed summary can be Fail,Pass")
 	flag.Parse()
-	llint, err := linturl.New(*configPathFlag)
-	if err != nil {
-		log.Fatal(err)
+	var llint *linturl.LinkLintConfig
+	if *configPathFlag == "" {
+		llint, err = linturl.NewFromContent([]byte(data))
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		llint, err = linturl.New(*configPathFlag)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	err = llint.Init(*pathFlag)
 	if err != nil {
