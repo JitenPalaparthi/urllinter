@@ -52,6 +52,16 @@ func New(configFile string) (*LinkLintConfig, error) {
 	return llc, nil
 }
 
+func NewFromContent(content []byte) (*LinkLintConfig, error) {
+	llc := &LinkLintConfig{}
+	err := yaml.Unmarshal(content, llc)
+	if err != nil {
+		return nil, err
+	}
+	llc.LinkMap = make(map[string][]LinkLint)
+	return llc, nil
+}
+
 func (llc *LinkLintConfig) Init(dir string) error {
 	err := filepath.Walk(dir,
 		func(path string, info os.FileInfo, err error) error {
