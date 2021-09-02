@@ -18,6 +18,12 @@ excludeLinks:
 - "<"
 - ">"
 - "@"
+excludeFiles:
+- "cli/"
+- ".git/"
+- "docs/""
+- ".gitignore"
+- ".github/"
 acceptStatusCodes:
 - 200
 - 201
