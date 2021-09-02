@@ -20,6 +20,7 @@ import (
 type LinkLintConfig struct {
 	IncludeExts       []string              `yaml:"includeExts"`
 	ExcludeLinks      []string              `yaml:"excludeLinks"`
+	ExcludeFiles      []string              `yaml:"excludeFiles"`
 	AcceptStatusCodes []int                 `yaml:"acceptStatusCodes"`
 	LinkMap           map[string][]LinkLint // consists map as the key and file details as values
 }
@@ -67,6 +68,21 @@ func (llc *LinkLintConfig) Init(dir string) error {
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
+			}
+			for _, exclude := range llc.ExcludeFiles {
+				if strings.HasPrefix(path, exclude) {
+					return nil
+
+				} else if strings.HasPrefix(exclude, "*.") {
+					if filepath.Ext(path) == filepath.Ext(exclude) {
+						return nil
+					}
+
+				} else if string(exclude[len(exclude)-1]) != "/" { // its a file
+					if path == exclude {
+						return nil
+					}
+				}
 			}
 			ext := filepath.Ext(path)
 			for _, ex := range llc.IncludeExts {

@@ -8,7 +8,7 @@ Each and every URL or link in this repo must be in working state.It is practical
 
 ## Solution
 
-urllinter linter pasrses all files (path provided in configuration) and stores them.Iteratively it checks whether the URL is working or not.All failure cases are marked as Fail and success cases are marked as Pass.
+urllinter pasrses all files (path provided in configuration) and stores them.Iteratively it checks whether the URL is working or not.All failure cases are marked as Fail and success cases are marked as Pass.
 
 ## Configuration
 
@@ -33,6 +33,12 @@ excludeLinks:
 - "<"
 - ">"
 - "@"
+excludeFiles:
+- "cli/"
+- .git/
+- docs/
+- ".gitignore"
+- ".github/"
 acceptStatusCodes:
 - 200
 - 201
