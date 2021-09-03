@@ -12,8 +12,6 @@ excludeLinks:
 - "http://0.0.0.0"
 - "https://0.0.0.0"
 - "https://vault.example.com:8200"
-- "https://github.com/vmware-tanzu"
-- "http://build-squid.eng.vmware.com/"
 - "$"
 - "<"
 - ">"
@@ -21,7 +19,7 @@ excludeLinks:
 excludeFiles:
 - "cli/"
 - ".git/"
-- "docs/""
+- "docs/"
 - ".gitignore"
 - ".github/"
 acceptStatusCodes:
