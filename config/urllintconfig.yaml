@@ -1,9 +1,9 @@
 ---
 includeExts:
-- ".yaml"
 - ".sh"
-- ".yml"
 - ".md"
+- ".yaml"
+- ".yml"
 excludeLinks:
 - "http://localhost"
 - "https://localhost"
@@ -12,16 +12,25 @@ excludeLinks:
 - "http://0.0.0.0"
 - "https://0.0.0.0"
 - "https://vault.example.com:8200"
+- "http://build-squid.eng.vmware.com/"
+- "https://harbor-"
+- "https://github.com/vmware-tanzu/"
+- "http://my.vmware.com/"
+- "http://helloworld-go.default.18.204.46.247.xip.io"
+- "https://example.com"
+- "http://zipkin.istio-system.svc.cluster.local"
+- "https://kubernetes.default.svc"
+- "https://api.github.com/repos/vmware-tanzu/tce/"
+- "http://minio:9000"
 - "$"
 - "<"
 - ">"
 - "@"
-excludeFiles:
-- "cli/"
+excludePaths:
 - ".git/"
-- "docs/"
 - ".gitignore"
 - ".github/"
+- "../tce/addons/packages/harbor"
 acceptStatusCodes:
 - 200
 - 201
