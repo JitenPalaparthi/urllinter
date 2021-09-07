@@ -20,7 +20,7 @@ import (
 type LinkLintConfig struct {
 	IncludeExts       []string              `yaml:"includeExts"`
 	ExcludeLinks      []string              `yaml:"excludeLinks"`
-	ExcludeFiles      []string              `yaml:"excludeFiles"`
+	ExcludePaths      []string              `yaml:"excludePaths"`
 	AcceptStatusCodes []int                 `yaml:"acceptStatusCodes"`
 	LinkMap           map[string][]LinkLint // consists map as the key and file details as values
 }
@@ -69,7 +69,7 @@ func (llc *LinkLintConfig) Init(dir string) error {
 			if err != nil {
 				return err
 			}
-			for _, exclude := range llc.ExcludeFiles {
+			for _, exclude := range llc.ExcludePaths {
 				if strings.HasPrefix(path, exclude) {
 					return nil
 
@@ -112,6 +112,35 @@ func (llc *LinkLintConfig) ReadFile(path string) error {
 		line := strings.Trim(s.Text(), " ")
 		link := rxStrict.FindString(line)
 		col := strings.Index(s.Text(), link)
+		// ignore lines
+		// if the line is commented then skip it
+		// This is for go or programming comments only
+
+		// if len(line) >= 2 && line[:2] == "//" {
+		// 	continue
+		// }
+		// // comments for yaml or yml files. Do not consider that line if line start with a comment
+		// if len(line) > 1 && line[:1] == "#" {
+		// 	continue
+		// }
+		// // comments for yaml or yml files. If there is comment in the line take only uncommented part
+		// index := strings.Index(line, "#")
+		// if index > 0 {
+		// 	line = line[0:index]
+		// }
+		// // This is for go or programming code only as comments in yaml files start with #
+		// // start
+		// if len(line) >= 2 && line[:2] == "/*" {
+		// 	//TODO here
+		// 	skip = true
+		// }
+		// if strings.Contains(line, "*/") {
+		// 	skip = false
+		// }
+		// if skip {
+		// 	continue
+		// }
+
 		if len(link) >= 8 && strings.ToLower(strings.Trim(link, " ")[0:4]) != "http" { // do not consider it as url if it dies not start with http or https
 			continue
 		}
