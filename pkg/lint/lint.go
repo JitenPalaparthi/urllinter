@@ -2,20 +2,24 @@ package lint
 
 import (
 	"bufio"
+	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"gopkg.in/yaml.v2"
 
 	xurls "mvdan.cc/xurls/v2"
 )
+
+const userAgent = "link-checker"
 
 type LinkLintConfig struct {
 	IncludeExts       []string              `yaml:"includeExts"`
@@ -32,6 +36,7 @@ type LinkLint struct {
 	Message  string
 	Status   string
 }
+
 type Position struct {
 	Row, Col int
 }
@@ -40,12 +45,12 @@ func New(configFile string) (*LinkLintConfig, error) {
 	if configFile == "" {
 		return nil, errors.New("configuration file cannot be empty")
 	}
-	file, err := ioutil.ReadFile(configFile)
+	file, err := os.ReadFile(configFile)
 	if err != nil {
 		return nil, err
 	}
 	llc := &LinkLintConfig{}
-	err = yaml.Unmarshal([]byte(file), llc)
+	err = yaml.Unmarshal(file, llc)
 	if err != nil {
 		return nil, err
 	}
@@ -69,17 +74,38 @@ func (llc *LinkLintConfig) Init(dir string) error {
 			if err != nil {
 				return err
 			}
-			for _, exclude := range llc.ExcludePaths {
-				if strings.HasPrefix(path, exclude) {
-					return nil
 
+			// Skip directories
+			if info.IsDir() {
+				return nil
+			}
+			// tmp variable to manipulate the filename based on a simple match
+			// if using a full qualified path:
+			// 		/home/bob/go/src/github.com/vmware-tanzu/community-edition/addons/packages/harbor/2.2.3/bundle/.imgpkg/images.yml
+			// wouldnt match because it was leading with:
+			// 		/home/bob/go/src/github.com/vmware-tanzu/community-edition/
+			// the solution was to remove the initial path and the leading "/" for the
+			// filepath.Match(match, tmp) to return true
+			tmp := path
+
+			// fix for fully qualified path
+			if strings.Index(tmp, dir) == 0 {
+				tmp = strings.Replace(tmp, dir, "", 1)
+			}
+			// remove leading /
+			if strings.Index(tmp, "/") == 0 {
+				tmp = strings.Replace(tmp, "/", "", 1)
+			}
+
+			for _, exclude := range llc.ExcludePaths {
+				if strings.HasPrefix(tmp, exclude) {
+					return nil
 				} else if strings.HasPrefix(exclude, "*.") {
-					if filepath.Ext(path) == filepath.Ext(exclude) {
+					if filepath.Ext(tmp) == filepath.Ext(exclude) {
 						return nil
 					}
-
 				} else if string(exclude[len(exclude)-1]) != "/" { // its a file
-					if path == exclude {
+					if tmp == exclude {
 						return nil
 					}
 				}
@@ -87,7 +113,10 @@ func (llc *LinkLintConfig) Init(dir string) error {
 			ext := filepath.Ext(path)
 			for _, ex := range llc.IncludeExts {
 				if ext == ex {
-					llc.ReadFile(path)
+					err = llc.ReadFile(path)
+					if err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -95,6 +124,18 @@ func (llc *LinkLintConfig) Init(dir string) error {
 	if err != nil {
 		return err
 	}
+
+	// TODO:  Put this behind a debug option in the future
+	// Keep around for debugging. It's a dump of world.
+	// fmt.Printf("\n\nDump All Links:\n")
+	// for link, objs := range llc.LinkMap {
+	// 	fmt.Printf("Link: %s\n", link)
+	// 	for _, obj := range objs {
+	// 		fmt.Printf("\tPath: %s\n", obj.Path)
+	// 	}
+	// }
+	// fmt.Printf("\n")
+
 	return err
 }
 
@@ -112,38 +153,12 @@ func (llc *LinkLintConfig) ReadFile(path string) error {
 		line := strings.Trim(s.Text(), " ")
 		link := rxStrict.FindString(line)
 		col := strings.Index(s.Text(), link)
-		// ignore lines
-		// if the line is commented then skip it
-		// This is for go or programming comments only
 
-		// if len(line) >= 2 && line[:2] == "//" {
-		// 	continue
-		// }
-		// // comments for yaml or yml files. Do not consider that line if line start with a comment
-		// if len(line) > 1 && line[:1] == "#" {
-		// 	continue
-		// }
-		// // comments for yaml or yml files. If there is comment in the line take only uncommented part
-		// index := strings.Index(line, "#")
-		// if index > 0 {
-		// 	line = line[0:index]
-		// }
-		// // This is for go or programming code only as comments in yaml files start with #
-		// // start
-		// if len(line) >= 2 && line[:2] == "/*" {
-		// 	//TODO here
-		// 	skip = true
-		// }
-		// if strings.Contains(line, "*/") {
-		// 	skip = false
-		// }
-		// if skip {
-		// 	continue
-		// }
-
-		if len(link) >= 8 && strings.ToLower(strings.Trim(link, " ")[0:4]) != "http" { // do not consider it as url if it dies not start with http or https
+		// do not consider it as url if it does not start with http or https
+		if len(link) >= 8 && strings.ToLower(strings.Trim(link, " ")[0:4]) != "http" {
 			continue
 		}
+
 		for _, l := range llc.ExcludeLinks {
 			if strings.Contains(link, l) {
 				skip = true
@@ -156,50 +171,116 @@ func (llc *LinkLintConfig) ReadFile(path string) error {
 		}
 		count++
 	}
-	err = s.Err()
-	if err != nil {
-		return err
+	return s.Err()
+}
+
+func checkURL(link string) (int, error) {
+	if !IsURL(link) {
+		return 0, errors.New("invalid URL")
 	}
-	return nil
+
+	/* #nosec G402 */
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	cli := &http.Client{Transport: tr}
+	ctx := context.Background()
+
+	// Try to just do a HEAD request since we don't actually need the content
+	req, _ := http.NewRequestWithContext(ctx, http.MethodHead, link, http.NoBody)
+	req.Header.Add("user-agent", userAgent)
+
+	resp, err := cli.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusMethodNotAllowed {
+		// For some reason some sites, like testgrid.k8s.io, don't allow HEAD requests
+		resp.Body.Close()
+		req, _ = http.NewRequestWithContext(ctx, http.MethodGet, link, http.NoBody)
+		req.Header.Add("user-agent", userAgent)
+
+		resp, err = cli.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		defer resp.Body.Close()
+	}
+
+	return resp.StatusCode, nil
+}
+
+type checkResult struct {
+	StatusCode int
+	URL        string
+	Error      error
+}
+
+func (llc *LinkLintConfig) isValidCode(statusCode int) bool {
+	valid := false
+	for _, code := range llc.AcceptStatusCodes {
+		if code == statusCode {
+			valid = true
+			break
+		}
+	}
+	return valid
 }
 
 func (llc *LinkLintConfig) LintAll() bool {
+	linkCount := len(llc.LinkMap)
+
+	// Limit the number of GET requests so we don't get rate limited
+	results := make(chan checkResult)
+	wg := sync.WaitGroup{}
+
 	isFatal := false
 	count := 0
-	for key := range llc.LinkMap {
-		count++
-		fmt.Println("Currently checking ", count, " url(s) out of ", len(llc.LinkMap))
-		if !IsUrl(key) {
-			isFatal = true
-			llc.OnFail("Invalid URL", key)
-			continue
-		}
-		resp, err := http.Get(key)
-		if err != nil {
-			isFatal = true
-			llc.OnFail(err.Error(), key)
-			continue
-		}
-		accepted := false
-		for _, code := range llc.AcceptStatusCodes {
-			if code == resp.StatusCode {
-				llc.OnPass("http Status-code "+strconv.Itoa(resp.StatusCode), key)
-				accepted = true
-				break
+	go func() {
+		// Loop through our results as they come in and print out the results
+		for res := range results {
+			wg.Done()
+			count++
+			fmt.Printf("Result %d of %d url(s)\n", count, linkCount)
+			if res.Error != nil {
+				isFatal = true
+				llc.OnFail(res.Error.Error(), res.URL)
+				continue
+			}
+
+			// No error, but check that the status code was acceptable
+			if llc.isValidCode(res.StatusCode) {
+				llc.OnPass(fmt.Sprintf("HTTP Status Code: %d", res.StatusCode), res.URL)
+			} else {
+				isFatal = true
+				llc.OnFail(fmt.Sprintf("HTTP Status Code: %d", res.StatusCode), res.URL)
 			}
 		}
-		if accepted {
-			continue
-		} else {
-			isFatal = true
-			llc.OnFail("http Status-code "+strconv.Itoa(resp.StatusCode), key)
-		}
+	}()
+
+	// Go through each found URL and validate it exists
+	for key := range llc.LinkMap {
+		wg.Add(1)
+
+		go func(key string) {
+			statusCode, err := checkURL(key)
+			results <- checkResult{
+				StatusCode: statusCode,
+				Error:      err,
+				URL:        key,
+			}
+		}(key)
+		time.Sleep(200 * time.Millisecond)
 	}
+	wg.Wait()
 
 	return isFatal
 }
 
-func IsUrl(str string) bool {
+func IsURL(str string) bool {
 	u, err := url.Parse(str)
 	return err == nil && u.Scheme != "" && u.Host != ""
 }

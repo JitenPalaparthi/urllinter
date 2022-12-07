@@ -14,13 +14,10 @@ excludeLinks:
 - "https://vault.example.com:8200"
 - "http://build-squid.eng.vmware.com/"
 - "https://harbor-"
-- "https://github.com/vmware-tanzu/"
-- "http://my.vmware.com/"
 - "http://helloworld-go.default.18.204.46.247.xip.io"
 - "https://example.com"
 - "http://zipkin.istio-system.svc.cluster.local"
 - "https://kubernetes.default.svc"
-- "https://api.github.com/repos/vmware-tanzu/tce/"
 - "http://minio:9000"
 - "$"
 - "<"
@@ -30,7 +27,6 @@ excludePaths:
 - ".git/"
 - ".gitignore"
 - ".github/"
-- "../tce/addons/packages/harbor"
 acceptStatusCodes:
 - 200
 - 201
